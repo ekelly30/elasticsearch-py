@@ -1,10 +1,11 @@
 import re
-from mock import Mock, patch
+from mock import Mock, patch, MagicMock
+import requests
 import urllib3
 import warnings
 from requests.auth import AuthBase
 
-from elasticsearch.exceptions import TransportError, ConflictError, RequestError, NotFoundError
+from elasticsearch.exceptions import TransportError, ConflictError, RequestError, NotFoundError, ConnectionError
 from elasticsearch.connection import RequestsHttpConnection, \
     Urllib3HttpConnection
 
@@ -62,6 +63,10 @@ class TestRequestsConnection(TestCase):
         con.session.send = _dummy_send
         return con
 
+    @staticmethod
+    def _raise_timeout_exception(*args, **kwargs):
+        raise requests.Timeout
+
     def _get_request(self, connection, *args, **kwargs):
         if 'body' in kwargs:
             kwargs['body'] = kwargs['body'].encode('utf-8')
@@ -85,6 +90,12 @@ class TestRequestsConnection(TestCase):
     def test_timeout_set(self):
         con = RequestsHttpConnection(timeout=42)
         self.assertEquals(42, con.timeout)
+
+    def test_timeout_handled(self):
+        con = RequestsHttpConnection()
+        con.session.request = MagicMock(side_effect=self._raise_timeout_exception)
+        with self.assertRaises(ConnectionError) as cm:
+            con.perform_request('GET', '/')
 
     def test_uses_https_if_verify_certs_is_off(self):
         with warnings.catch_warnings(record=True) as w:

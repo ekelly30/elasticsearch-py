@@ -61,31 +61,34 @@ class RequestsHttpConnection(Connection):
                 'Connecting to %s using SSL with verify_certs=False is insecure.' % self.base_url)
 
     def perform_request(self, method, url, params=None, body=None, timeout=None, ignore=()):
-        url = self.base_url + url
         if params:
-            url = '%s?%s' % (url, urlencode(params or {}))
+            path = '%s?%s' % (url, urlencode(params or {}))
+        else:
+            path = url
+
+        full_url = self.base_url + path
 
         start = time.time()
         try:
-            response = self.session.request(method, url, data=body, timeout=timeout or self.timeout)
+            response = self.session.request(method, full_url, data=body, timeout=timeout or self.timeout)
             duration = time.time() - start
             raw_data = response.text
         except requests.exceptions.SSLError as e:
-            self.log_request_fail(method, url, response.request.path_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, path, body, time.time() - start, exception=e)
             raise SSLError('N/A', str(e), e)
         except requests.Timeout as e:
-            self.log_request_fail(method, url, response.request.path_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, path, body, time.time() - start, exception=e)
             raise ConnectionTimeout('TIMEOUT', str(e), e)
         except requests.ConnectionError as e:
-            self.log_request_fail(method, url, response.request.path_url, body, time.time() - start, exception=e)
+            self.log_request_fail(method, full_url, path, body, time.time() - start, exception=e)
             raise ConnectionError('N/A', str(e), e)
 
         # raise errors based on http status codes, let the client handle those if needed
         if not (200 <= response.status_code < 300) and response.status_code not in ignore:
-            self.log_request_fail(method, url, response.request.path_url, body, duration, response.status_code, raw_data)
+            self.log_request_fail(method, full_url, response.request.path_url, body, duration, response.status_code, raw_data)
             self._raise_error(response.status_code, raw_data)
 
-        self.log_request_success(method, url, response.request.path_url, body, response.status_code, raw_data, duration)
+        self.log_request_success(method, full_url, response.request.path_url, body, response.status_code, raw_data, duration)
 
         return response.status_code, response.headers, raw_data
 
